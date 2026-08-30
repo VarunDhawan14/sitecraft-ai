@@ -10,79 +10,75 @@ import { detectDependencies } from "../utils/sandpackUtils";
 import { useAppContext } from "../context/AppContext";
 import SandpackErrorMonitor from "./SandpackErrorMonitor";
 
-// Watches for file edits inside Sandpack editor and save changes to DB & live state
-
-function SandpackFileWatcher({ onLiveFilesChange }) {
+// Watches for file edits inside Sandpack editor
+// and saves changes to DB without resetting the editor.
+function SandpackFileWatcher() {
   const { sandpack } = useSandpack();
   const { files } = sandpack;
   const { activeProject, updateProjectFiles } = useAppContext();
 
   const activeProjectRef = useRef(activeProject);
+
   useEffect(() => {
     activeProjectRef.current = activeProject;
   }, [activeProject]);
 
   useEffect(() => {
     const project = activeProjectRef.current;
+
     if (!project) return;
+
     const updatedFiles = {};
     let hasChanges = false;
 
     for (const [path, fileObj] of Object.entries(files)) {
       const filecode = fileObj.code;
+
       updatedFiles[path] = filecode;
+
       const originalContent =
         typeof project.files[path] === "string"
           ? project.files[path]
           : project.files[path]?.content;
+
       if (originalContent !== undefined && originalContent !== filecode) {
         hasChanges = true;
       }
     }
 
-    // Sync live Files to parent
-    onLiveFilesChange(updatedFiles);
+    // Updating liveFiles on every keystroke causes Sandpack
+    // to recreate its files and switch/reset the editor.
+
     if (hasChanges) {
       updateProjectFiles(updatedFiles);
     }
-  }, [files]);
+  }, [files, updateProjectFiles]);
+
   return null;
 }
 
 const PreviewPanel = ({ project, activeFile, showCode }) => {
   const [showErrorOverlay, setShowErrorOverlay] = useState(true);
 
-  // Keep local state of files that updates as user types
+  // Local copy of project files
   const [liveFiles, setLiveFiles] = useState(project.files);
-  const [prevProjectKey, setPrevProjectKey] = useState(
-    `${project._id}-${project.version}`,
-  );
 
-  const currentKey = `${project._id}-${project.version}`;
-  if (prevProjectKey !== currentKey) {
-    setPrevProjectKey(currentKey);
+  const projectKey = `${project._id}-${project.version}`;
+
+  // Update local files ONLY when project/version actually changes.
+  // Do not update this state when the user types in Sandpack.
+  useEffect(() => {
     setLiveFiles(project.files);
-  }
+  }, [projectKey, project.files]);
 
-  const handleLiveFilesChange = (newFiles) => {
-    setLiveFiles((prev) => {
-      let changed = false;
-      for (const [p, code] of Object.entries(newFiles)) {
-        if (prev[p] !== code) {
-          changed = true;
-          break;
-        }
-      }
-      return changed ? newFiles : prev;
-    });
-  };
-
-  // Convert Live files to sandpack format
+  // Convert files to Sandpack format
   const sandpackFiles = useMemo(() => {
     const spFiles = {};
+
     for (const [path, content] of Object.entries(liveFiles)) {
       const filecode =
         typeof content === "string" ? content : content?.content || "";
+
       spFiles[path] = {
         code: filecode,
         active: path === activeFile,
@@ -91,8 +87,7 @@ const PreviewPanel = ({ project, activeFile, showCode }) => {
     return spFiles;
   }, [liveFiles, activeFile]);
 
-  // Detect Dependencies from import statements using LiveFiles
-
+  // Detect dependencies from project files
   const dependencies = useMemo(() => {
     return detectDependencies(liveFiles);
   }, [liveFiles]);
@@ -100,7 +95,7 @@ const PreviewPanel = ({ project, activeFile, showCode }) => {
   return (
     <div className='h-full w-full'>
       <SandpackProvider
-        key={project._id}
+        key={projectKey}
         template='react'
         files={sandpackFiles}
         customSetup={{ dependencies }}
@@ -137,8 +132,10 @@ const PreviewPanel = ({ project, activeFile, showCode }) => {
           },
         }}
       >
-        <SandpackFileWatcher onLiveFilesChange={handleLiveFilesChange} />
+        <SandpackFileWatcher />
+
         <SandpackErrorMonitor onErrorChange={setShowErrorOverlay} />
+
         <SandpackLayout
           style={{
             height: "100%",
@@ -153,7 +150,11 @@ const PreviewPanel = ({ project, activeFile, showCode }) => {
               showLineNumbers
               showInlineErrors
               wrapContent
-              style={{ height: "100%", flex: 1, minWidth: 0 }}
+              style={{
+                height: "100%",
+                flex: 1,
+                minWidth: 0,
+              }}
             />
           )}
 
@@ -162,7 +163,11 @@ const PreviewPanel = ({ project, activeFile, showCode }) => {
             showRefreshButton
             showOpenInCodeSandbox={false}
             showSandpackErrorOverlay={showErrorOverlay}
-            style={{ height: "100%", flex: showCode ? 1 : 2, minWidth: 0 }}
+            style={{
+              height: "100%",
+              flex: showCode ? 1 : 2,
+              minWidth: 0,
+            }}
           />
         </SandpackLayout>
       </SandpackProvider>
