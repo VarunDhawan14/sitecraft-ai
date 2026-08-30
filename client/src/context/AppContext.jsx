@@ -1,4 +1,4 @@
-import {
+import React, {
   createContext,
   useCallback,
   useContext,
@@ -8,6 +8,7 @@ import {
 import api from "../api/api";
 import toast from "react-hot-toast";
 import { Navigate, useNavigate } from "react-router-dom";
+import debounce from "lodash.debounce";
 
 const AppContext = createContext(undefined);
 
@@ -42,7 +43,7 @@ export function AppContextProvider({ children }) {
 
   useEffect(() => {
     checkSession();
-  }, [checkSession]);
+  }, []);
 
   const login = async (email, password) => {
     try {
@@ -154,7 +155,7 @@ export function AppContextProvider({ children }) {
 
   // Generating Project
   const handleGenerate = useCallback(
-    async (params) => {
+    async (prompt) => {
       if (!user) return;
       setGeneratingProject(true);
       try {
@@ -215,6 +216,34 @@ export function AppContextProvider({ children }) {
     [activeProject, user],
   );
 
+  const debounceSave = React.useMemo(
+    () =>
+      debounce(async (files, id) => {
+        try {
+          await api.put(`/api/projects/${id}/files`, { files });
+        } catch (err) {
+          console.log("Failed to auto-save files:", err);
+          toast.error("Failed to save code modifications");
+        }
+      }, 1000),
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      debounceSave.flush();
+    };
+  }, [debounceSave]);
+
+  // Update Project Files
+  const updateProjectFiles = useCallback(
+    async (files) => {
+      if (!activeProject || !user) return;
+      debounceSave(files, activeProject._id);
+    },
+    [activeProject, user, debounceSave],
+  );
+
   // Return Statement
   return (
     <AppContext.Provider
@@ -237,7 +266,9 @@ export function AppContextProvider({ children }) {
         loadProjects,
         loadProject,
         handleGenerate,
+        handleChat,
         handleDelete,
+        updateProjectFiles,
       }}
     >
       {children}
