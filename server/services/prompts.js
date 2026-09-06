@@ -80,7 +80,7 @@ CRITICAL COLOR MODE RULE:
 ## 3. LAYOUT & SPACING — MAKE IT BREATHE
 
 - **Container Width**: Use \`max-w-7xl mx-auto px-6 md:px-12\` for the outer wrapper
-- **Section Padding**: Every section must have \`py-20 md:py-32\` — generous vertical space
+- Section Padding: Use \`py-16 md:py-24\` by default. Use larger spacing only when the section content or design genuinely requires it.
 - **Card/Grid Gap**: \`gap-6\` to \`gap-10\`. Never less than \`gap-4\`
 - **Card Design (premium)**:
   * Background: \`bg-white border border-zinc-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300\`
@@ -92,7 +92,7 @@ CRITICAL COLOR MODE RULE:
 ## 4. COMPONENTS — PATTERNS THAT ELEVATE
 
 ### Hero Section (MUST BE SPECTACULAR)
-- Full-width, at minimum 100vh tall
+- Full-width hero section with balanced vertical spacing; use min-h-[70vh] to min-h-[85vh] on desktop when appropriate, but never force 100vh unless the user explicitly requests a full-screen hero.
 - Top badge/chip: \`<span class='inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold ring-1 ring-indigo-100'>\`
 - H1: Bold, large, with 1-2 words gradient-highlighted
 - Subheadline: 1-2 lines of light, clear benefit copy
@@ -250,7 +250,7 @@ You MUST respond with a valid JSON object of this exact shape:
 
 Operation types:
 - "create": Add a new file with full content
-- "update": Modify an existing file using search/replace. The "search" must be an EXACT substring from the current file. The "replace" is what to substitute it with. You can use multiple update ops for the same file.
+- "update": Modify an existing file using search/replace. The "search" must be an EXACT substring from the current file.
 - "delete": Remove a file
 
 CRITICAL RULES for "update" operations:
@@ -258,6 +258,70 @@ CRITICAL RULES for "update" operations:
 - Keep search blocks as small as possible (just the lines that change + minimal surrounding context for uniqueness)
 - If you need to see a file's content to make changes, say so in description and I'll provide it
 - Prefer targeted search/replace over recreating entire files
+
+MINIMAL FILE SELECTION RULES:
+- Only modify files that are directly required by the user's request.
+- Do not modify all project files just because they were provided for context.
+- For update/delete operations, ONLY use files included in the "Relevant files" section of the prompt.
+- NEVER return an update/delete operation for a file whose full content was not provided in the "Relevant files" section.
+- For a visual or content change, normally modify 1-3 files maximum.
+- For a simple change such as color, text, spacing, typography, button styling, navbar styling, or theme, prefer 1-2 files.
+- For a new feature, modify only the files required to add and render that feature.
+- Do not return operations for unrelated components.
+- If an existing file does not need to change, do not include it in operations.
+
+PATCH SIZE RULES:
+- For an "update", change only the smallest necessary section.
+- Never replace an entire existing file when a targeted search/replace can accomplish the request.
+- The "replace" string should contain only the changed code plus minimal surrounding context.
+- Keep each update operation concise.
+
+OPERATION MINIMIZATION:
+- Always prefer the fewest possible operations.
+- If multiple changes can be made inside the same file, combine them into one update operation when practical.
+- For simple styling, color, typography, spacing, or theme requests, prefer 1 update operation.
+- Do not create separate update operations for every individual color or CSS rule.
+- Never create multiple operations for the same file unless they modify clearly unrelated sections.
+- For ordinary user requests, target 1-3 operations total.
+
+OUTPUT LIMIT:
+- Prefer 1-3 operations for ordinary requests.
+- Do not generate more than 5 operations unless the user's request genuinely requires it.
+- Never rewrite multiple unrelated files.
+
+MINIMAL CHANGE RULES:
+- Make the smallest possible change required by the user's request.
+- NEVER rewrite an entire existing file for a small change.
+- Prefer targeted "update" operations using exact search/replace blocks.
+- Do NOT return unchanged files.
+- Do NOT recreate an existing file unless absolutely necessary.
+- For theme, color, spacing, typography, text, buttons, navbar, hero, cards, sections, or layout changes, modify only the affected lines.
+- If the request affects only one component, do not modify unrelated components.
+- Keep each search/replace block as small as possible while remaining unique.
+
+NEW FEATURE RULES:
+- If the user asks for a completely new feature, determine which existing files must change.
+- Create a new component file when appropriate instead of putting everything into an existing large component.
+- Use "create" for genuinely new files.
+- Use targeted "update" operations to import and render the new component.
+- Do not rewrite existing components just to add a new feature.
+- Only modify files that are actually required for the feature.
+
+OUTPUT SIZE RULES:
+- Keep the JSON response as small as possible.
+- Do not include unchanged files.
+- Do not return full contents of existing files unless absolutely necessary.
+- Prefer one concise update operation per affected file when practical.
+- Combine related changes in the same file into one update operation.
+- Do not split one file's changes into multiple operations unnecessarily.
+- Avoid repeating large sections of existing code.
+- Never generate unnecessary code or explanations inside the JSON response.
+
+EXAMPLES:
+- "Change the website theme to chocolate brown" → modify only the files containing the relevant colors/styles.
+- "Change the navbar button text" → modify only the exact text in the navbar component.
+- "Add a testimonials section" → create the testimonials component and minimally update the file that renders the page.
+- "Add dark mode" → create only the required theme/state components and minimally update the existing layout/styles.
 
 Be minimal: only touch files that NEED to change.`;
 
@@ -302,25 +366,28 @@ Rules:
 - Do NOT write any code — only plan the file list`;
 
 export function buildFileCodeSystem(allFiles, alreadyGeneratedFiles) {
-    const fileList = allFiles
-        .map((f) => {
-            const impStr = f.imports && f.imports.length > 0 ? ` (Imports: ${f.imports.join(", ")})` : "";
-            const expStr = f.exports ? ` (Exports: ${f.exports})` : "";
-            return `  ${f.path}: ${f.description}${impStr}${expStr}`;
-        })
-        .join("\n");
+  const fileList = allFiles
+    .map((f) => {
+      const impStr =
+        f.imports && f.imports.length > 0
+          ? ` (Imports: ${f.imports.join(", ")})`
+          : "";
+      const expStr = f.exports ? ` (Exports: ${f.exports})` : "";
+      return `  ${f.path}: ${f.description}${impStr}${expStr}`;
+    })
+    .join("\n");
 
-    let contextStr = "";
-    if (alreadyGeneratedFiles && Object.keys(alreadyGeneratedFiles).length > 0) {
-        contextStr =
-            "\n\nCRITICAL CONTEXT — Already Generated Files:\n" +
-            "The following files have already been generated. You MUST align your exports, imports, CSS selectors, or props signatures EXACTLY with these files:\n";
-        for (const [path, code] of Object.entries(alreadyGeneratedFiles)) {
-            contextStr += `\nFile: ${path}\n\`\`\`javascript\n${code}\n\`\`\`\n`;
-        }
+  let contextStr = "";
+  if (alreadyGeneratedFiles && Object.keys(alreadyGeneratedFiles).length > 0) {
+    contextStr =
+      "\n\nCRITICAL CONTEXT — Already Generated Files:\n" +
+      "The following files have already been generated. You MUST align your exports, imports, CSS selectors, or props signatures EXACTLY with these files:\n";
+    for (const [path, code] of Object.entries(alreadyGeneratedFiles)) {
+      contextStr += `\nFile: ${path}\n\`\`\`javascript\n${code}\n\`\`\`\n`;
     }
+  }
 
-    return `${BASE_SYSTEM}
+  return `${BASE_SYSTEM}
 
 You are writing a SINGLE file for a React project.
 The full project file structure is:
@@ -337,5 +404,15 @@ Rules:
 - The code must be complete, visually stunning, and production-ready
 - Import other project files using their exact paths (e.g. import Header from './components/Header')
 - The /styles.css file MUST include: Google Font @import, @keyframes float/fadeInUp/fadeIn, and .animate-* utility classes
-- Apply the full design system defined in the base instructions — premium typography, generous spacing, proper hover effects, and animations`;
+- Apply the full design system defined in the base instructions — premium typography, generous spacing, proper hover effects, and animations
+
+CODE SIZE RULES:
+- Generate every component required by the project plan; do not skip required files or components.
+- Keep generated components concise and production-oriented.
+- Avoid unnecessary code, decorative markup, repeated elements, and redundant wrappers.
+- Prefer reusable arrays and map() for repeated UI items.
+- Keep simple landing-page components around 100-250 lines when practical.
+- Do not add animations, complex interactions, or decorative sections unless requested.
+- Use Tailwind utility classes directly instead of generating large custom CSS for simple styling.
+- Prioritize a clean, responsive layout over excessive visual complexity.`;
 }
