@@ -47,14 +47,33 @@ export function AppContextProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const { data } = await api.post("/api/auth/login", { email, password });
+      const { data } = await api.post("/api/auth/login", {
+        email,
+        password,
+      });
+
       setUser(data.user);
       toast.success("Welcome back!");
       navigate("/");
     } catch (err) {
       console.log("Login failed:", err);
+
+      if (err?.response?.data?.requiresVerification) {
+        const verificationEmail = err.response.data.email || email;
+
+        toast.error("Please verify your email first.");
+
+        navigate(
+          `/verify-email?email=${encodeURIComponent(verificationEmail)}`,
+        );
+
+        return;
+      }
+
       const errMsg = err?.response?.data?.error || "Invalid email or password";
+
       toast.error(errMsg);
+
       throw new Error(errMsg);
     }
   };
@@ -66,13 +85,114 @@ export function AppContextProvider({ children }) {
         email,
         password,
       });
+
+      if (data.requiresVerification) {
+        toast.success("Verification code sent to your email.");
+
+        navigate(
+          `/verify-email?email=${encodeURIComponent(data.email || email)}`,
+        );
+
+        return false;
+      }
+
       setUser(data.user);
       toast.success("Account created successfully");
-      navigate("/");
+
+      return true;
     } catch (err) {
       console.log("Registration failed:", err);
+
       const errMsg = err?.response?.data?.error || "Registration failed";
+
       toast.error(errMsg);
+
+      throw new Error(errMsg);
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    try {
+      const { data } = await api.post("/api/auth/forgot-password", {
+        email,
+      });
+
+      toast.success(data.message || "Password reset email sent");
+
+      return data;
+    } catch (err) {
+      console.log("Forgot password failed:", err);
+
+      const errMsg =
+        err?.response?.data?.error || "Unable to send password reset email";
+
+      toast.error(errMsg);
+
+      throw new Error(errMsg);
+    }
+  };
+
+  const resetPassword = async (token, password) => {
+    try {
+      const { data } = await api.post(`/api/auth/reset-password/${token}`, {
+        password,
+      });
+
+      toast.success(data.message || "Password reset successfully");
+
+      return data;
+    } catch (err) {
+      console.log("Reset password failed:", err);
+
+      const errMsg = err?.response?.data?.error || "Unable to reset password";
+
+      toast.error(errMsg);
+
+      throw new Error(errMsg);
+    }
+  };
+
+  const verifyEmail = async (email, code) => {
+    try {
+      const { data } = await api.post("/api/auth/verify-email", {
+        email,
+        code,
+      });
+
+      setUser(data.user);
+
+      toast.success(data.message || "Email verified successfully");
+
+      navigate("/");
+    } catch (err) {
+      console.log("Email verification failed:", err);
+
+      const errMsg =
+        err?.response?.data?.error || "Invalid or expired verification code";
+
+      toast.error(errMsg);
+
+      throw new Error(errMsg);
+    }
+  };
+
+  const resendVerificationCode = async (email) => {
+    try {
+      const { data } = await api.post("/api/auth/resend-verification", {
+        email,
+      });
+
+      toast.success(data.message || "Verification code sent successfully");
+
+      return data;
+    } catch (err) {
+      console.log("Resend verification failed:", err);
+
+      const errMsg =
+        err?.response?.data?.error || "Unable to resend verification code";
+
+      toast.error(errMsg);
+
       throw new Error(errMsg);
     }
   };
@@ -93,7 +213,7 @@ export function AppContextProvider({ children }) {
   };
 
   // Project Actions
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     if (!user) return;
     try {
       const { data } = await api.get("/api/projects");
@@ -104,34 +224,37 @@ export function AppContextProvider({ children }) {
     } finally {
       setLoadingProjects(false);
     }
-  };
+  }, [user]);
 
-  const loadProject = async (id, silent = false) => {
-    if (!user) return;
-    if (!silent) setLoadingActiveProject(true);
-    try {
-      const { data } = await api.get(`/api/projects/${id}`);
-      setActiveProject(data);
+  const loadProject = useCallback(
+    async (id, silent = false) => {
+      if (!user) return;
+      if (!silent) setLoadingActiveProject(true);
+      try {
+        const { data } = await api.get(`/api/projects/${id}`);
+        setActiveProject(data);
 
-      // Default File selection
-      const files = Object.keys(data.files);
-      if (files.length > 0) {
-        setActiveFile((prev) => {
-          if (files.includes(prev)) return prev;
-          if (files.includes("/App.js")) return "/App.js";
-          return files[0];
-        });
+        // Default File selection
+        const files = Object.keys(data.files);
+        if (files.length > 0) {
+          setActiveFile((prev) => {
+            if (files.includes(prev)) return prev;
+            if (files.includes("/App.js")) return "/App.js";
+            return files[0];
+          });
+        }
+      } catch (err) {
+        console.log("Failed to load project:", err);
+        if (!silent) {
+          toast.error("Failed to load project details");
+          navigate("/");
+        }
+      } finally {
+        if (!silent) setLoadingActiveProject(false);
       }
-    } catch (err) {
-      console.log("Failed to load project:", err);
-      if (!silent) {
-        toast.error("Failed to load project details");
-        navigate("/");
-      }
-    } finally {
-      if (!silent) setLoadingActiveProject(false);
-    }
-  };
+    },
+    [user, navigate],
+  );
 
   // Automatically poll active project status if generating or pending
 
@@ -269,6 +392,10 @@ export function AppContextProvider({ children }) {
         handleChat,
         handleDelete,
         updateProjectFiles,
+        forgotPassword,
+        resetPassword,
+        verifyEmail,
+        resendVerificationCode,
       }}
     >
       {children}
