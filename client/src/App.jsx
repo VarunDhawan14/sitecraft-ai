@@ -6,6 +6,9 @@ import BuilderPage from "./pages/BuilderPage";
 import PreviewPage from "./pages/PreviewPage";
 import { Toaster } from "react-hot-toast";
 import PublishPage from "./pages/PublishPage";
+import ForgotPasswordPage from "./pages/ForgetPasswordPage.jsx";
+import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
+import VerifyEmailPage from "./pages/VerifyEmailPage.jsx";
 
 const App = () => {
   return (
@@ -16,6 +19,12 @@ const App = () => {
         <Route element={<GuestLayout />}>
           <Route path='/login' element={<AuthPage mode='login' />} />
           <Route path='/register' element={<AuthPage mode='register' />} />
+          <Route path='/forgot-password' element={<ForgotPasswordPage />} />
+          <Route
+            path='/reset-password/:token'
+            element={<ResetPasswordPage />}
+          />
+          <Route path='/verify-email' element={<VerifyEmailPage />} />
         </Route>
 
         {/* Protected Routes */}
