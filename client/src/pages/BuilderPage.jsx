@@ -16,6 +16,7 @@ import { exportProjectZip } from "../utils/exportProject";
 const BuilderPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const [leftTab, setLeftTab] = useState("chat");
   const [publishing, setPublishing] = useState(false);
   const [publishUrl, setPublishUrl] = useState(null);
@@ -33,29 +34,52 @@ const BuilderPage = () => {
     handleChat,
   } = useAppContext();
 
+  // ============================================================
+  // Initial Project Load
+  // ============================================================
+
   useEffect(() => {
     if (!id) return;
+
     loadProject(id);
-  }, [id]);
+  }, [id, loadProject]);
 
-  // useEffect(() => {
-  //   if (!id || !activeProject) return;
-  //   if (
-  //     activeProject.status === "pending" ||
-  //     activeProject.status === "generating"
-  //   ) {
-  //     const interval = setInterval(() => {
-  //       loadProject(id, true);
-  //     }, 1500);
-  //     return () => clearInterval(interval);
-  //   }
-  // }, [id, loadProject, activeProject]);
+  // ============================================================
+  // Poll Project While AI Is Generating
+  // ============================================================
 
-  // Function to add in Builder Page
+  useEffect(() => {
+    if (!id || !activeProject) return;
+
+    const isGenerating =
+      activeProject.status === "pending" ||
+      activeProject.status === "generating";
+
+    // Do not poll after generation has completed or failed.
+    if (!isGenerating) return;
+
+    const interval = setInterval(() => {
+      loadProject(id, true);
+    }, 1500);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [id, activeProject?.status, loadProject]);
+
+  // ============================================================
+  // Open Preview
+  // ============================================================
+
   const handleOpenPreview = () => {
     if (!id) return;
+
     window.open(`/preview/${id}`, "_blank");
   };
+
+  // ============================================================
+  // Publish Project
+  // ============================================================
 
   const handlePublish = async () => {
     if (!id) return;
@@ -66,35 +90,58 @@ const BuilderPage = () => {
       await api.post(`/api/projects/${id}/publish`);
 
       const url = `${window.location.origin}/publish/${id}`;
+
       setPublishUrl(url);
 
       toast.success("Website published successfully!");
     } catch (err) {
       console.error("Publish failed:", err);
+
       toast.error(err?.response?.data?.error || "Publish failed");
     } finally {
       setPublishing(false);
     }
   };
+
+  // ============================================================
+  // Download Project
+  // ============================================================
+
   const handleDownload = () => {
     if (!activeProject) return;
+
     exportProjectZip(activeProject);
   };
+
+  // ============================================================
+  // Loading State
+  // ============================================================
 
   if (loadingActiveProject || !activeProject) {
     return <Loading />;
   }
 
+  // ============================================================
+  // Main Builder UI
+  // ============================================================
+
   return (
     <div className='h-screen flex flex-col bg-white overflow-hidden text-zinc-900 relative'>
-      {/* Toaster notification message */}
+      {/* ======================================================
+          Toast Notifications
+      ====================================================== */}
+
       <Toaster
         position='top-center'
         toastOptions={{
           duration: 3000,
         }}
       />
-      {/* Top Bar Header */}
+
+      {/* ======================================================
+          Top Header
+      ====================================================== */}
+
       <BuilderHeader
         projectName={activeProject.name}
         version={activeProject.version}
@@ -107,29 +154,55 @@ const BuilderPage = () => {
         onBack={() => navigate("/")}
         onLogout={logout}
       />
-      {/* Main Layout */}
+
+      {/* ======================================================
+          Main Layout
+      ====================================================== */}
 
       <div className='flex-1 flex overflow-hidden'>
-        {/* Left SideBar */}
+        {/* ====================================================
+            Left Sidebar
+        ==================================================== */}
+
         <div className='w-[320px] shrink-0 flex flex-col border-r border-zinc-200 bg-white'>
-          {/* Sidebar Tabs */}
+          {/* ==================================================
+              Sidebar Tabs
+          ================================================== */}
+
           <div className='flex border-b border-zinc-100'>
+            {/* Chat Tab */}
+
             <button
               onClick={() => setLeftTab("chat")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium cursor-pointer ${leftTab === "chat" ? "text-zinc-900 border-b-2 border-zinc-900" : "text-zinc-400 hover:text-zinc-700"}`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium cursor-pointer ${
+                leftTab === "chat"
+                  ? "text-zinc-900 border-b-2 border-zinc-900"
+                  : "text-zinc-400 hover:text-zinc-700"
+              }`}
             >
-              <MessageSquareIcon size={13} /> Chat
+              <MessageSquareIcon size={13} />
+              Chat
             </button>
+
+            {/* Files Tab */}
 
             <button
               onClick={() => setLeftTab("files")}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium cursor-pointer ${leftTab === "files" ? "text-zinc-900 border-b-2 border-zinc-900" : "text-zinc-400 hover:text-zinc-700"}`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium cursor-pointer ${
+                leftTab === "files"
+                  ? "text-zinc-900 border-b-2 border-zinc-900"
+                  : "text-zinc-400 hover:text-zinc-700"
+              }`}
             >
-              <FolderIcon size={13} /> Files
+              <FolderIcon size={13} />
+              Files
             </button>
           </div>
 
-          {/* Sidebar Content */}
+          {/* ==================================================
+              Sidebar Content
+          ================================================== */}
+
           <div className='flex-1 overflow-hidden'>
             {leftTab === "chat" ? (
               <ChatPanel
@@ -150,13 +223,23 @@ const BuilderPage = () => {
           </div>
         </div>
 
-        {/* Preview / Code Area */}
+        {/* ====================================================
+            Preview / Code / AI Progress Area
+        ==================================================== */}
+
         <div className='flex-1 overflow-hidden'>
+          {/* --------------------------------------------------
+              AI Generation In Progress
+          -------------------------------------------------- */}
+
           {activeProject.status === "pending" ||
-          activeProject.status === "generating" ||
-          activeProject.status === "failed" ? (
+          activeProject.status === "generating" ? (
             <AgentProgressDashboard project={activeProject} />
           ) : (
+            /* ------------------------------------------------
+               Generation Finished
+            ------------------------------------------------ */
+
             <PreviewPanel
               project={activeProject}
               activeFile={activeFile}
@@ -165,6 +248,10 @@ const BuilderPage = () => {
           )}
         </div>
       </div>
+
+      {/* ======================================================
+          Publish Modal
+      ====================================================== */}
 
       {publishUrl && (
         <PublishModal
