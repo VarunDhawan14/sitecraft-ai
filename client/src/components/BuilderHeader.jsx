@@ -29,7 +29,7 @@ const BuilderHeader = ({
         >
           <ArrowLeftIcon size={16} />
         </button>
-        <img src='/logo.svg' alt='logo' className='invert size-5' />
+        <img src='/favicon.svg' alt='logo' className='invert size-5' />
 
         <span className='text-sm font-semibold truncate max-w-38 md:max-w-50 '>
           {projectName}
